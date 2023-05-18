@@ -1,12 +1,14 @@
 from flask import Flask, render_template, request
-import torch
+import onnxruntime as ort
 from PIL import Image
 from torchvision import transforms
 import os
+import torch
 
 app = Flask(__name__)
 
-model = torch.onnx.load('mobilenet.onnx')
+model_path = 'mobilenet_v2.onnx'
+ort_session = ort.InferenceSession(model_path)
 
 def preprocess_image(image_path):
     image = Image.open(image_path)
@@ -25,9 +27,12 @@ def preprocess_image(image_path):
 def predict(image_path):
     try:
         image = preprocess_image(image_path)
+        input_name = ort_session.get_inputs()[0].name
+        output_name = ort_session.get_outputs()[0].name
         with torch.no_grad():
-            output = model(image)
-            _, predicted = torch.max(output, 1)
+            output = ort_session.run([output_name], {input_name: image.numpy()})[0]
+            predicted = torch.from_numpy(output)
+            _, predicted = torch.max(predicted, 1)
             class_index = predicted.cpu().numpy()[0]
             with open('imagenet_classes.txt') as f:
                 classes = [line.strip() for line in f.readlines()]
